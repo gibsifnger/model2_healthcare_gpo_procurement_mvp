@@ -1,9 +1,10 @@
-"""
-A_state.state_builder
-- decision_generator.py에서 상태 생성(A) 역할을 먼저 분리한 파일
-- 기존 공개 진입점 signature와 출력 컬럼은 유지한다.
-- helper 계산(B)은 B_interpret.helper_calculator를 호출한다.
-"""
+
+# 외생 시계열과 synthetic 운영규칙을 이용해 **decision_master_df**를 만든다
+# 입력	   exogenous_df, cfg, seed, keep_latest_only
+# 출력	   decision_master_df
+# 다음 파일로 넘기는 것	baseline_flow_builder.py, candidate_policy.py 등이 먹는 decision row 원본
+# 여기서 봐야 하는 중심축	“외부시장 데이터 + 운영가정 + 무매입 기준 helper”를 합쳐 판단 시작점 row를 만든다
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -11,9 +12,10 @@ import numpy as np
 import pandas as pd
 
 from ..config import PipelineConfig
+#A가 완전 순수층은 아니고 B 일부를 호출함
 from ..B_interpret.helper_calculator import _simulate_no_buy_helpers
 
-
+# 원당가/환율/운임 월별 표가 제대로 안 들어오면 아예 판단을 시작하지 않겠다
 def _ensure_monthly_exogenous_df(exogenous_df: pd.DataFrame) -> pd.DataFrame:
     required = ["as_of_month", "global_raw_sugar_price", "usdkrw", "freight_index"]
     missing = [c for c in required if c not in exogenous_df.columns]
@@ -25,7 +27,7 @@ def _ensure_monthly_exogenous_df(exogenous_df: pd.DataFrame) -> pd.DataFrame:
     out = out.sort_values("as_of_month").drop_duplicates("as_of_month", keep="last").reset_index(drop=True)
     return out
 
-
+# “현실 데이터를 못 받았어도, 최소한 시장이 출렁이는 환경을 가정해서 파이프라인은 끝까지 돌려보자.”
 def make_demo_exogenous_df(
     start_month: str = "2023-01-01",
     n_months: int = 36,
@@ -58,11 +60,15 @@ def make_demo_exogenous_df(
     out.loc[shock_idx, "shock_event_flag"] = 1
     return out
 
-
+# “시장지표를 그대로 보지 말고, 구매의사결정에 쓸 현재/미래 landed cost 감각으로 변환하자.”
+# 원당가, 환율, 운임을 가중합해서 간이 landed cost proxy를 만든다. 
+# 식은 0.72 * sugar + 0.18 * usdkrw + 1.10 * freight
 def _calc_landed_cost_proxy(sugar: float, usdkrw: float, freight: float) -> float:
     return float(0.72 * sugar + 0.18 * usdkrw + 1.10 * freight)
 
 
+# 미래 사용량을 단순 상수로 두지 않고, 월별 계절성 + 행사성 + BOM성 요인으로 흔들리게 만든다.
+   # shock_flag가 있는 달은 promo에 약한 음수 offset도 준다.
 def _month_seasonality(month_num: int) -> float:
     mapping = {
         1: 0.96, 2: 0.95, 3: 0.99, 4: 1.00,
@@ -84,7 +90,7 @@ def _bom_factor(month_num: int, rng: np.random.Generator) -> float:
     base = 0.02 if int(month_num) in {3, 4, 10, 11} else 0.0
     return float(base + rng.choice([0.0, 0.0, 0.01]))
 
-
+# “앞으로 몇 달간 얼마씩 쓸 것 같은지를 먼저 대략 정해놓은 기본 예상표를 만들자.”
 def _make_usage_path(
     future_months: pd.Series,
     future_shock_flags: pd.Series,
@@ -101,7 +107,9 @@ def _make_usage_path(
         values.append(float(max(18000.0, usage)))
     return values
 
-
+# “지금 새 발주를 안 해도, 기존 PO 기준으로 앞으로 들어올 물량은 이 정도라고 놓자.”
+  # 재고가 빡빡하면 첫 달은 MOQ, 아니면 lot multiple, 
+  # 둘째 달은 MOQ, 셋째 달은 짝수 월이면 lot multiple, 이후는 0이다.
 def _make_open_po_path(
     current_inventory_ton: float,
     current_month_idx: int,
@@ -125,6 +133,8 @@ def _make_open_po_path(
     return path
 
 
+#“이번 달에 원당을 새로 사야 할지 보려면, 현재 원가/재고/차단재고/예정입고/앞으로 몇 달 사용량/자금압박부터 한 row에 정리.”
+# 외생 시계열과 synthetic 운영규칙을 결합해, 한 달 단위 구매판단의 시작 row(decision_master_df)를 만든다.
 def build_hybrid_decision_master_df(
     exogenous_df: pd.DataFrame,
     cfg: PipelineConfig,
@@ -132,12 +142,10 @@ def build_hybrid_decision_master_df(
     keep_latest_only: bool = False,
 ) -> pd.DataFrame:
     """외생 시계열 + synthetic 운영규칙으로 decision master 생성.
-
     A 역할:
     - 외생 정리
     - synthetic 운영상태 생성
     - horizon usage/open PO/cost path 구성
-
     B 호출:
     - helper / rule / shortage anchored 기준값은 B_interpret.helper_calculator 에 위임
     """
@@ -197,7 +205,7 @@ def build_hybrid_decision_master_df(
             current_month_idx=i,
             cfg=cfg,
         )
-
+         # ③ B helper를 이미 여기서 호출한다
         helpers = _simulate_no_buy_helpers(
             starting_inventory_ton=usable_inventory_ton,
             usage_path=usage_path,

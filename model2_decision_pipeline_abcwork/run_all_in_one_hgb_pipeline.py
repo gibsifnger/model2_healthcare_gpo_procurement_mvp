@@ -73,7 +73,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--built-external-output-csv", default=None)
 
     # model artifact mode
-    parser.add_argument("--use-saved-artifacts", action="store_true")
+     # 기본은 saved artifact 사용(아무 옵션 없이 실행 saved artifact 사용)
+       # --fresh-fit 붙여서 실행시 fresh-fit 사용
+    parser.set_defaults(use_saved_artifacts=True)
+
+    parser.add_argument(
+        "--use-saved-artifacts",
+        dest="use_saved_artifacts",
+        action="store_true",
+        help="saved artifact 번들을 사용한다. (기본값)"
+    )
+    parser.add_argument(
+        "--fresh-fit",
+        dest="use_saved_artifacts",
+        action="store_false",
+        help="historical panel로 새로 quick-fit 한다."
+    )
     parser.add_argument("--model-a-path", default=None)
     parser.add_argument("--model-b-path", default=None)
     parser.add_argument("--save-artifacts", action="store_true")
@@ -83,9 +98,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--prediction-combine-mode",
         choices=["auto", "model_only", "rule_floor", "rule_only"],
-        default="auto",
+        default="rule_floor",
         help=(
-            "auto: fresh-fit demo는 rule_floor, saved artifact는 model_only. "
+            "최종 prediction 결합 방식. "
+            "auto는 현재 rule_floor와 동일하게 처리. "
             "model_only: 모델 결과만 사용. "
             "rule_floor: max(rule, model). "
             "rule_only: 모델 무시하고 rule만 사용."
@@ -241,13 +257,14 @@ def resolve_model_bundles(
 # =========================================================
 # 4) prediction combine mode
 # =========================================================
-def resolve_prediction_combine_mode(args: argparse.Namespace, model_mode: str) -> str:
-    if args.prediction_combine_mode != "auto":
-        return args.prediction_combine_mode
-
-    if model_mode == "fresh_fit_from_historical_panel":
+def resolve_prediction_combine_mode(args: argparse.Namespace) -> str:
+    """
+    combine mode는 model source(fresh-fit / saved artifact)와 독립적으로 결정한다.
+    auto는 현재 rule_floor와 동일하게 처리한다.
+    """
+    if args.prediction_combine_mode == "auto":
         return "rule_floor"
-    return "model_only"
+    return args.prediction_combine_mode
 
 # =========================================================
 # 4-1) Fixed canonical case: 2026-04
@@ -504,7 +521,7 @@ def run_all_in_one_pipeline(args: argparse.Namespace) -> Dict[str, pd.DataFrame]
         args=args,
     )
 
-    combine_mode = resolve_prediction_combine_mode(args, model_mode)
+    combine_mode = resolve_prediction_combine_mode(args)
 
     # 4. 지정 판단월 row 선택 + fixed case overwrite + score
     decision_month = pd.to_datetime(args.decision_month).to_period("M").to_timestamp()
