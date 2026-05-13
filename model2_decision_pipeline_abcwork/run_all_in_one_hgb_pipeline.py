@@ -19,6 +19,8 @@
 """
 # 실행 코드  : python run_all_in_one_hgb_pipeline.py --start-month 2023-01-01 --demo-months 44 --decision-month 2026-04-01 --save-outputs
 
+# 이 파일은 구매팀으로 치면 월간 구매회의 실행 순서표다.
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +30,15 @@ from typing import Dict, Optional, Tuple
 import pandas as pd
 import math
 
-
+# 2. 내부 모듈 import
+# 이 부분은 구매팀장이 각 담당자에게 역할을 배정하는 것과 같다.
+'''
+담당	                코드
+시장자료 담당	       build_external_inputs_monthly, make_demo_exogenous_df
+월별 구매상태표 담당	build_hybrid_decision_master_df
+위험/기회 판단 담당	    attach_target_predictions
+정책 실행 담당	       run_full_decision_pipeline
+'''
 from build_external_inputs import ExternalBuildConfig, build_external_inputs_monthly
 from model2_pipeline.config import PipelineConfig
 from model2_pipeline.A_state.state_builder import (
@@ -49,6 +59,14 @@ from model2_pipeline.pipeline import run_full_decision_pipeline
 # =========================================================
 # 1) CLI
 # =========================================================
+# 3. parse_args() — 터미널 실행 옵션 정의
+# 이 부분은 구매회의 전에 시장자료를 어디서 가져올지 정하는 부분이다.
+'''
+실행 옵션	              구매언어
+--external-mode demo	실제 시장자료 없이 가상의 원당 가격/환율/운임 흐름으로 테스트
+--external-mode csv	    내가 준비한 기존 월별 시장자료 CSV 사용
+--external-mode build	외부 API와 운임 자료를 조합해서 월별 시장자료 새로 생성
+'''
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run model2 all-in-one HGB decision pipeline")
 
@@ -72,7 +90,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--freight-value-col", default="freight_index")
     parser.add_argument("--built-external-output-csv", default=None)
 
-    # model artifact mode
+# 4. 모델 저장본 사용 / 새 학습 옵션
+# model artifact mode
      # 기본은 saved artifact 사용(아무 옵션 없이 실행 saved artifact 사용)
        # --fresh-fit 붙여서 실행시 fresh-fit 사용
     parser.set_defaults(use_saved_artifacts=True)
@@ -93,8 +112,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-b-path", default=None)
     parser.add_argument("--save-artifacts", action="store_true")
     parser.add_argument("--artifact-dir", default="./artifacts")
-
-    # prediction combine mode
+# 5. 예측 결합 방식 + 출력 옵션 + 판단월
+# rule_floor는 보수적인 구매 의사결정에 가깝다.
+# prediction combine mode
     parser.add_argument(
         "--prediction-combine-mode",
         choices=["auto", "model_only", "rule_floor", "rule_only"],
@@ -121,6 +141,7 @@ def parse_args() -> argparse.Namespace:
 # =========================================================
 # 2) External data loader / builder
 # =========================================================
+# 6. load_external_inputs_from_csv() — 외생변수 CSV 로드
 def load_external_inputs_from_csv(csv_path: str | Path) -> pd.DataFrame:
     path = Path(csv_path)
     if not path.exists():
@@ -130,7 +151,8 @@ def load_external_inputs_from_csv(csv_path: str | Path) -> pd.DataFrame:
     df = _ensure_monthly_exogenous_df(df)
     return df
 
-
+# 7. prepare_external_inputs() — demo/csv/build 중 하나로 외생변수 준비
+# 실제 시장자료가 아직 없을 때, 테스트용으로 원당 가격/환율/운임 흐름을 가상 생성하는 것이다.
 def prepare_external_inputs(args: argparse.Namespace) -> Tuple[pd.DataFrame, Optional[Path]]:
     """외생 3개 시계열 준비.
 
@@ -140,6 +162,7 @@ def prepare_external_inputs(args: argparse.Namespace) -> Tuple[pd.DataFrame, Opt
     """
     built_csv_path: Optional[Path] = None
 
+#데모
     if args.external_mode == "demo":
         exogenous_df = make_demo_exogenous_df(
             start_month=args.start_month,
@@ -148,13 +171,13 @@ def prepare_external_inputs(args: argparse.Namespace) -> Tuple[pd.DataFrame, Opt
         )
         exogenous_df = _ensure_monthly_exogenous_df(exogenous_df)
         return exogenous_df, built_csv_path
-
+#csv
     if args.external_mode == "csv":
         if not args.external_csv_path:
             raise ValueError("--external-mode csv requires --external-csv-path")
         exogenous_df = load_external_inputs_from_csv(args.external_csv_path)
         return exogenous_df, built_csv_path
-
+#build
     if args.external_mode == "build":
         build_cfg = ExternalBuildConfig(
             start_month=args.start_month,
@@ -183,6 +206,13 @@ def prepare_external_inputs(args: argparse.Namespace) -> Tuple[pd.DataFrame, Opt
 # =========================================================
 # 3) HGB fit / load
 # =========================================================
+# 8. fit_hgb_bundles_from_historical_panel() — historical panel로 A/B 모델 새 학습
+# 과거 구매회의 기록을 보고 다음 질문에 답하는 기준을 학습하는 것이다.
+'''
+모델	구매 질문
+target A	"이 상태면 재고 부족/긴급구매 위험인가?"
+target B	"이 상태면 지금 사는 것이 원가상 유리하거나, 나중에 강제구매 리스크가 커지는가?"
+'''
 def fit_hgb_bundles_from_historical_panel(
     historical_master_df: pd.DataFrame,
     seed: int,
@@ -210,6 +240,7 @@ def fit_hgb_bundles_from_historical_panel(
     y_a = train_df["target_a_rule"].astype(int)
     y_b = train_df["target_b_rule"].astype(int)
 
+# 이건 과거 판단표를 기준으로 두 개의 판단기를 만드는 것이다.
     bundle_a = fit_demo_hgb_bundle(
         X=X_train,
         y=y_a,
@@ -226,8 +257,9 @@ def fit_hgb_bundles_from_historical_panel(
     )
     return bundle_a, bundle_b
 
-
-
+# 9. resolve_model_bundles() — 저장 모델 로드 또는 새 학습 선택
+# 검증된 기존 판단모델을 그대로 쓰는 방식이다.
+ # 즉, "이번 구매회의에서는 이미 저장해 둔 위험/기회 판단기준을 사용하겠다"는 뜻이다
 def resolve_model_bundles(
     historical_master_df: pd.DataFrame,
     args: argparse.Namespace,
@@ -240,6 +272,8 @@ def resolve_model_bundles(
         bundle_b = load_model_bundle(args.model_b_path)
         return bundle_a, bundle_b, "loaded_saved_artifacts"
 
+# 현재 만든 과거 판단표를 기준으로 이번 회의용 판단기준을 임시로 다시 만든다.
+#냉정하게 말하면, 이건 실전 검증된 모델이라기보다 데모/개발용 빠른 학습 구조에 가깝다.
     bundle_a, bundle_b = fit_hgb_bundles_from_historical_panel(
         historical_master_df=historical_master_df,
         seed=args.seed,
@@ -257,6 +291,9 @@ def resolve_model_bundles(
 # =========================================================
 # 4) prediction combine mode
 # =========================================================
+# 10. resolve_prediction_combine_mode() — 예측 결합 방식 확정
+ # "모델 판단과 규칙 판단 중 어떤 기준으로 최종 위험 판단을 할 것인가?"를 확정한다.
+ # 현재 auto는 자동 최적화가 아니라 보수적으로 rule_floor를 쓰는 별칭이다.
 def resolve_prediction_combine_mode(args: argparse.Namespace) -> str:
     """
     combine mode는 model source(fresh-fit / saved artifact)와 독립적으로 결정한다.
@@ -269,12 +306,17 @@ def resolve_prediction_combine_mode(args: argparse.Namespace) -> str:
 # =========================================================
 # 4-1) Fixed canonical case: 2026-04
 # =========================================================
+# 11. _ceil_to_multiple() — 배수 올림 함수
+# 발주량을 로트 단위에 맞추는 계산이다.
+ # 예를 들어 최소 발주 단위가 2,500톤이면, 필요한 양이 5,300톤이어도 실제 발주는 7,500톤이 되어야 한다
 def _ceil_to_multiple(value: float, multiple: float) -> float:
     if multiple <= 0:
         return float(value)
     return float(math.ceil(float(value) / float(multiple)) * float(multiple))
 
-
+# 12. _recompute_fixed_case_helpers() — 2026-04 고정 케이스의 helper/rule 재계산
+# "2026년 4월 말 구매회의"라는 특정 상황을 하나 잡고, 이 상황에 맞게 계산값을 다시 맞추는 단계다.
+ # 즉, 여러 월의 일반 데이터 중에서 발표/시연용 대표 구매회의 케이스를 고정하는 구조다.
 def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
     """
     고정 케이스 row의 helper / rule을 다시 맞춘다.
@@ -289,6 +331,19 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("_recompute_fixed_case_helpers expects exactly 1 row")
 
     row = out.iloc[0]
+    
+
+# 구매회의에서 가장 먼저 보는 기본판이다.
+
+#질문	                               변수
+#지금 창고에 쓸 수 있는 재고가 얼마인가?	current_inv
+#최소로 얼마부터 살 수 있나?            moq
+#발주는 몇 톤 단위로 끊어야 하나?	   lot
+#지금 사면 톤당 얼마인가?	          now_cost
+#지금 발주하면 몇 월부터 영향을 주나?	arrival_idx
+#월별 사용량은 얼마인가?	              usage
+#이미 들어올 물량은 얼마인가?	       open_po
+#월별 예상 원가는 얼마인가?	           costs
 
     current_inv = float(row["current_inventory_ton"])
     moq = float(row["moq_ton"])
@@ -315,6 +370,7 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
         float(row["expected_landed_cost_m4_per_ton"]),
     ]
 
+# 13. baseline no-buy world — 아무것도 안 샀을 때 재고/부족 계산
     # -------------------------
     # baseline no-buy world
     # -------------------------
@@ -333,6 +389,7 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
 
     baseline_total_shortage_ton = float(sum(shortage_path))
 
+# 14. 첫 부족월 + 도착 직전 재고 계산
     first_shortage_month_idx = None
     for i, s in enumerate(shortage_path, start=1):
         if s > 0:
@@ -345,10 +402,8 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
     else:
         begin_inv_at_arrival_ton = float(ending_inv_path[arrival_idx - 2])
 
-    # -------------------------
-    # arrival 시점에 한 번에 사서 막으려면
-    # 얼마가 필요한지 계산
-    # -------------------------
+
+#15. 도착 시점 기준 필요 구매량 계산
     cum_usage = 0.0
     cum_open_po = 0.0
     max_cum_gap_arrival_ton = 0.0
@@ -367,6 +422,7 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
     else:
         required_buy_qty_arrival_ton = 0.0
 
+# 16. 첫 부족월 기준 필요 구매량 계산
     if first_shortage_month_idx is not None:
         if first_shortage_month_idx == 1:
             begin_inv_first_shortage = current_inv
@@ -382,6 +438,8 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
     else:
         required_buy_qty_first_shortage_ton = 0.0
 
+
+# 17. B helper — 원가상승 압력 계산
     # -------------------------
     # B helper (원가상승 압력)
     # -------------------------
@@ -394,6 +452,7 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
     b_emergency_premium_score = round(b_peak_cost_vs_now_pct * 1000.0, 6)
     b_high_cost_month_count = int(sum(1 for c in costs if c > now_cost * 1.03))
 
+# 18. helper/rule overwrite — 계산값을 row에 다시 넣기
     # -------------------------
     # 최종 helper / rule overwrite
     # -------------------------
@@ -422,7 +481,8 @@ def _recompute_fixed_case_helpers(decision_df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
-
+# 19. apply_fixed_case_2026_04() — 2026년 4월 구매회의 케이스 강제 고정
+# "2026년 4월 30일 구매회의에서 원당을 볼 때"라는 장면을 만든다.
 def apply_fixed_case_2026_04(decision_df: pd.DataFrame) -> pd.DataFrame:
     """
     최초 가정사항 고정:
@@ -499,6 +559,8 @@ def apply_fixed_case_2026_04(decision_df: pd.DataFrame) -> pd.DataFrame:
 # =========================================================
 # 5) Main all-in-one runner
 # =========================================================
+# 20. run_all_in_one_pipeline() — 전체 실행 본체
+ # 구매회의를 실행하기 전에 회사 기준표와 시장자료를 준비하는 단계다.
 def run_all_in_one_pipeline(args: argparse.Namespace) -> Dict[str, pd.DataFrame]:
     cfg = PipelineConfig()
 
@@ -548,6 +610,9 @@ def run_all_in_one_pipeline(args: argparse.Namespace) -> Dict[str, pd.DataFrame]
             f"available decision_months tail={available_months[-12:]}"
         )
 
+# 22. fixed case 보정 + A/B 예측값 부착
+# "2026년 4월 말 원당 구매회의 상황을 고정하고, 이 상황이 A 관점에서 수급 위험인지, 
+# B 관점에서 원가/기회 위험인지 판단값을 붙인다."
     latest_decision_df = apply_fixed_case_2026_04(latest_decision_df)
 
     scored_latest_df = attach_target_predictions(
@@ -564,7 +629,8 @@ def run_all_in_one_pipeline(args: argparse.Namespace) -> Dict[str, pd.DataFrame]
         decision_master_df=scored_latest_df,
         cfg=cfg,
     )
-
+# 24. meta_df와 outputs 구성
+ # 구매회의 결과 보고서에 붙는 실행 요약과 부속 표를 묶는 단계다.
     # 6. 메타 정보
     meta_df = pd.DataFrame([
         {
@@ -599,6 +665,7 @@ def run_all_in_one_pipeline(args: argparse.Namespace) -> Dict[str, pd.DataFrame]
 # =========================================================
 # 6) Console display
 # =========================================================
+# 25. 콘솔 출력 보조 함수들
 def _fmt_value(v):
     if pd.isna(v):
         return "-"
@@ -610,7 +677,7 @@ def _fmt_value(v):
         return f"{float(v):,.4f}"
     return str(v)
 
-
+# 26. print_key_outputs() — 핵심 결과 콘솔 표시
 def _print_kv_block(title: str, items: Dict[str, object]) -> None:
     print(f"\n[{title}]")
     for k, v in items.items():

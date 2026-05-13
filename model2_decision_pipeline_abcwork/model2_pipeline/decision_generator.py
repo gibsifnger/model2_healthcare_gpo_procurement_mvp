@@ -24,7 +24,9 @@ import pandas as pd
 
 from .config import PipelineConfig
 
-
+# 블록 1) 외생 입력 최소 형태 강제
+# “결국 이 모델은 월별 판단을 하니까, 외생 입력도 월별로 정리된 표여야 한다. 
+# 그리고 원당/환율/운임 3개는 반드시 있어야 한다.”
 def _ensure_monthly_exogenous_df(exogenous_df: pd.DataFrame) -> pd.DataFrame:
     required = ["as_of_month", "global_raw_sugar_price", "usdkrw", "freight_index"]
     missing = [c for c in required if c not in exogenous_df.columns]
@@ -36,7 +38,8 @@ def _ensure_monthly_exogenous_df(exogenous_df: pd.DataFrame) -> pd.DataFrame:
     out = out.sort_values("as_of_month").drop_duplicates("as_of_month", keep="last").reset_index(drop=True)
     return out
 
-
+# 블록 2) 데모용 외생 시계열 생성기
+# “실제 데이터가 없어도 ‘그럴듯한 월별 시장환경’을 만들어서 모델 전체를 검증할 수 있게 하자.”
 def make_demo_exogenous_df(
     start_month: str = "2023-01-01",
     n_months: int = 36,
@@ -70,7 +73,8 @@ def make_demo_exogenous_df(
     out.loc[shock_idx, "shock_event_flag"] = 1
     return out
 
-
+# 블록 3) landed cost proxy와 계절/판촉/월초월말 요인 함수들
+# “시장 데이터는 그대로는 의사결정에 못 쓰니, 현재 원가 proxy와 월별 수요 패턴 보정값으로 변환한다.”
 def _calc_landed_cost_proxy(sugar: float, usdkrw: float, freight: float) -> float:
     """원당 landed cost proxy.
     scale만 맞춘 mini proxy이며, live에서는 실제 내부 원가식/정규화 식으로 교체 가능.
@@ -99,7 +103,8 @@ def _bom_factor(month_num: int, rng: np.random.Generator) -> float:
     base = 0.02 if int(month_num) in {3, 4, 10, 11} else 0.0
     return float(base + rng.choice([0.0, 0.0, 0.01]))
 
-
+# 블록 4) 미래 사용량 path 생성
+# “앞으로 몇 달 동안 실제로 얼마를 쓸 것 같은지를 계절/판촉/월초월말/노이즈를 섞어서 만든다.”
 def _make_usage_path(
     future_months: pd.Series,
     future_shock_flags: pd.Series,
@@ -116,7 +121,8 @@ def _make_usage_path(
         values.append(float(max(18000.0, usage)))
     return values
 
-
+# 블록 5) 기존 open PO path 생성
+# “이미 잡혀 있는 예정입고가 horizon 동안 어느 정도 들어올지를 간단한 skeleton으로 만든다.”
 def _make_open_po_path(
     current_inventory_ton: float,
     current_month_idx: int,
@@ -143,7 +149,8 @@ def _make_open_po_path(
         path.append(float(qty))
     return path
 
-
+# 블록 6) arrival 기준 필요구매수량 계산
+# “도착월에 한 번 넣는다고 가정했을 때, 진짜로 얼마를 사야 이후 horizon에서 안전재고를 유지할 수 있는지를 계산한다.”
 def _calc_required_buy_qty_from_arrival(
     starting_inventory_ton: float,
     usage_path: List[float],
@@ -184,6 +191,8 @@ def _calc_required_buy_qty_from_arrival(
 
     required_first_shortage_qty = max(0.0, float(usage_path[arrival_month_idx - 1]) - (begin_inv_at_arrival + float(open_po_path[arrival_month_idx - 1])) + safety_stock_ton)
 
+
+
     return {
         "begin_inv_at_arrival_ton": float(begin_inv_at_arrival),
         "max_cum_gap_arrival_ton": float(max(0.0, max_gap_qty)),
@@ -191,7 +200,9 @@ def _calc_required_buy_qty_from_arrival(
         "required_buy_qty_first_shortage_ton": float(max(0.0, required_first_shortage_qty)),
     }
 
-
+# 블록 7) no-buy baseline helper 계산 본체
+# “지금 새로 안 산다고 가정했을 때, 앞으로 shortage가 나는지, 언제 처음 나는지, 전체 shortage가 얼마나 되는지, 
+# 비용 상방이 얼마나 있는지, 그래서 A-risk/B-risk를 켜야 하는지를 한 번에 계산한다.”
 def _simulate_no_buy_helpers(
     starting_inventory_ton: float,
     usage_path: List[float],
@@ -310,7 +321,8 @@ def _simulate_no_buy_helpers(
         "target_b_rule": int(target_b),
     }
 
-
+# 블록 8) build_hybrid_decision_master_df 시작: 외생 리턴 특성 만들기
+# “시장 레벨만 보지 말고 최근 1개월/3개월 추세도 같이 의사결정 입력으로 넣자.”
 def build_hybrid_decision_master_df(
     exogenous_df: pd.DataFrame,
     cfg: PipelineConfig,
@@ -335,6 +347,9 @@ def build_hybrid_decision_master_df(
     exog["usdkrw_ret_3m"] = exog["usdkrw"].pct_change(3)
     exog["freight_ret_3m"] = exog["freight_index"].pct_change(3)
 
+# 블록 9) decision row 생성 루프
+# “2023-04, 2023-05, 2023-06 … 각 기준월마다 하나의 구매 판단 장면을 만든다. 
+# 그 장면에는 현재 상태와 향후 몇 개월 경로가 같이 붙는다.”
     rows: List[Dict] = []
     max_idx = len(exog) - cfg.horizon_months - 1
     if max_idx < 0:
@@ -359,6 +374,8 @@ def build_hybrid_decision_master_df(
             for _, r in fut.iterrows()
         ]
 
+  # 블록 10) synthetic 재고 상태 생성
+  # “재고는 장부상 재고만 있으면 안 되고, 실제로 쓸 수 있는 usable inventory로 정리해야 한다.”
         # synthetic inventory state
         seasonality_now = _month_seasonality(pd.Timestamp(cur["as_of_month"]).month)
         blocked_inventory_ton = float(max(0.0, 400 + rng.normal(600, 250)))
@@ -371,6 +388,9 @@ def build_hybrid_decision_master_df(
         on_hand_inventory_ton = float(np.clip(on_hand_inventory_ton, 8_000.0, 42_000.0))
         usable_inventory_ton = float(max(0.0, on_hand_inventory_ton - blocked_inventory_ton))
 
+# 블록 11) usage/open PO/helper/working capital 생성
+# “현재 장면의 수요경로, 예정입고경로, no-buy 기준 부족/비용 위험, 
+# 자금압박까지 한 번에 만들어서 decision row에 붙인다.”
         usage_path = _make_usage_path(
             future_months=fut["as_of_month"],
             future_shock_flags=fut.get("shock_event_flag", pd.Series([0] * len(fut))),
@@ -404,7 +424,9 @@ def build_hybrid_decision_master_df(
                 98.0,
             )
         )
-
+# 블록 12) 최종 row 딕셔너리 만들기
+# “지금 이 월의 구매 판단 장면을 하나의 decision row로 만든다. 여기엔 현재 재고, 현재 원가, 외생 추세, 자금압박, 
+# MOQ/lot/cap, helper, A/B rule이 다 같이 들어간다.”
         row: Dict[str, object] = {
             "decision_id": f"{cfg.material_code}_{pd.Timestamp(cur['as_of_month']).strftime('%Y-%m')}",
             "decision_month": pd.Timestamp(cur["as_of_month"]).strftime("%Y-%m"),
@@ -435,6 +457,8 @@ def build_hybrid_decision_master_df(
             **helpers,
         }
 
+# 블록 13) horizon wide 컬럼 붙이기
+# “앞으로 1개월차, 2개월차, 3개월차… 사용량/예정입고/예상원가를 컬럼으로 펼쳐서 붙인다.”
         for month_idx in range(1, cfg.horizon_months + 1):
             row[f"usage_m{month_idx}_ton"] = float(usage_path[month_idx - 1])
             row[f"open_po_m{month_idx}_ton"] = float(open_po_path[month_idx - 1])
@@ -442,6 +466,8 @@ def build_hybrid_decision_master_df(
 
         rows.append(row)
 
+# 블록 14) 최종 DataFrame 생성 + latest only 옵션
+# “학습용 historical decision panel로도 쓸 수 있고, 현재월 1건 의사결정 row만 뽑아 live 판단용으로도 쓸 수 있게 만든다.”
     decision_master_df = pd.DataFrame(rows).sort_values("as_of_month").reset_index(drop=True)
 
     if keep_latest_only:

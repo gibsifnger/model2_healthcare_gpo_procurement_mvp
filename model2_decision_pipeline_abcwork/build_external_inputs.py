@@ -32,10 +32,17 @@ import numpy as np
 import pandas as pd
 import requests
 
-
+# 2. FRED 원당 가격 URL
 FRED_SUGAR_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PSUGAISAUSDM"
 
+# 3. ExternalBuildConfig — 외생변수 생성 설정 묶음
+# 이건 시장자료 생성 요청서다.
 
+# 구매팀 표현	코드 설정
+# "2019년부터 최근까지 봐줘"	start_month, end_month
+# "환율은 ECOS에서 가져와"	ecos_api_key, ecos_stat_code, ecos_item_code_*
+# "운임은 임시값으로라도 만들어줘"	freight_mode="synthetic"
+# "운임은 내가 만든 CSV를 써줘"	freight_mode="csv", freight_csv_path
 @dataclass
 class ExternalBuildConfig:
     start_month: str = "2019-01-01"
@@ -61,6 +68,7 @@ class ExternalBuildConfig:
 # =========================================================
 # Common helpers
 # =========================================================
+# 4. _to_month_start() — 날짜를 월초로 맞추는 함수
 def _to_month_start(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series).dt.to_period("M").dt.to_timestamp()
 
@@ -68,6 +76,7 @@ def _to_month_start(series: pd.Series) -> pd.Series:
 # =========================================================
 # 1) Sugar from FRED
 # =========================================================
+# 5. fetch_fred_sugar_monthly() — FRED에서 원당 가격 가져오기
 def fetch_fred_sugar_monthly() -> pd.DataFrame:
     """Official FRED CSV pull for PSUGAISAUSDM.
 
@@ -95,6 +104,7 @@ def fetch_fred_sugar_monthly() -> pd.DataFrame:
 # =========================================================
 # 2) USDKRW from ECOS
 # =========================================================
+# 6. build_ecos_url() — ECOS API 주소 만들기
 def build_ecos_url(
     api_key: str,
     stat_code: str,
@@ -134,7 +144,7 @@ def build_ecos_url(
     return "/".join(parts)
 
 
-
+# 7. fetch_ecos_usdkrw_monthly() — ECOS에서 환율 가져오기
 def fetch_ecos_usdkrw_monthly(
     api_key: str,
     stat_code: str,
@@ -190,6 +200,7 @@ def fetch_ecos_usdkrw_monthly(
 # =========================================================
 # 3) Freight index
 # =========================================================
+# 8. load_freight_index_from_csv() — 운임 CSV를 월별 운임지수로 변환
 def load_freight_index_from_csv(
     csv_path: str,
     date_col: str = "Date",
@@ -219,7 +230,7 @@ def load_freight_index_from_csv(
     return out
 
 
-
+# 9. build_synthetic_freight_from_sugar_fx() — 합성 운임 생성
 def build_synthetic_freight_from_sugar_fx(
     base_df: pd.DataFrame,
     seed: int = 42,
@@ -251,6 +262,7 @@ def build_synthetic_freight_from_sugar_fx(
 # =========================================================
 # 4) Final builder
 # =========================================================
+# 10. build_external_inputs_monthly() — 최종 외생변수 월별 표 만들기
 def build_external_inputs_monthly(cfg: ExternalBuildConfig) -> pd.DataFrame:
     if cfg.end_month is None:
         cfg.end_month = pd.Timestamp.today().to_period("M").to_timestamp().strftime("%Y-%m-%d")
@@ -283,7 +295,7 @@ def build_external_inputs_monthly(cfg: ExternalBuildConfig) -> pd.DataFrame:
     merged = sugar_df.merge(fx_df, on="as_of_month", how="inner").sort_values("as_of_month").reset_index(drop=True)
     if merged.empty:
         raise ValueError("Merged sugar/fx dataframe is empty. Check month range and ECOS series.")
-
+# 11. 운임 붙이기 — CSV 방식
     if cfg.freight_mode == "csv":
         if not cfg.freight_csv_path:
             raise ValueError("freight_mode=csv requires --freight-csv-path")
@@ -294,12 +306,13 @@ def build_external_inputs_monthly(cfg: ExternalBuildConfig) -> pd.DataFrame:
         )
         merged = merged.merge(freight_df, on="as_of_month", how="left")
         merged["freight_index"] = merged["freight_index"].ffill().bfill()
+ # 12. 운임 붙이기 — synthetic 방식
     elif cfg.freight_mode == "synthetic":
         freight_df = build_synthetic_freight_from_sugar_fx(merged, seed=cfg.seed)
         merged = merged.merge(freight_df, on="as_of_month", how="left")
     else:
         raise ValueError("freight_mode must be one of: csv, synthetic")
-
+# 13. 최종 컬럼 정리 후 반환
     merged = merged[["as_of_month", "global_raw_sugar_price", "usdkrw", "freight_index"]].copy()
     merged = merged.sort_values("as_of_month").reset_index(drop=True)
     return merged
@@ -308,6 +321,7 @@ def build_external_inputs_monthly(cfg: ExternalBuildConfig) -> pd.DataFrame:
 # =========================================================
 # 5) CLI
 # =========================================================
+# 14. 이 파일 자체 실행용 parse_args()
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build external 3-factor monthly CSV for model2")
     parser.add_argument("--start-month", default="2019-01-01")
@@ -328,7 +342,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
-
+# 15. __main__ — 이 파일을 직접 실행했을 때
 if __name__ == "__main__":
     args = parse_args()
     cfg = ExternalBuildConfig(

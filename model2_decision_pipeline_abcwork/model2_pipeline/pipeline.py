@@ -12,6 +12,7 @@ from __future__ import annotations #타입힌트를 나중에 평가
 from typing import Dict #반환타입 명시
 import pandas as pd
 
+# 3. 블록 1 — 필요한 담당 함수들을 불러오는 부분
 from .A_state.baseline_flow_builder import build_baseline_flow_df #A상태펼치기 '안샀다고 치고 앞으로 월별 흐름 어떻게 되나?
 from .C_policy_action.candidate_policy import generate_candidate_df #정책후보 생성 
 from .C_policy_action.scenario_summary import build_scenario_compare_summary #후보별 성적표 정리(SUMMARY/ROBUST)
@@ -22,6 +23,7 @@ from .C_policy_action.gate_policy import apply_operating_gate #그 후보가 회
 from .C_policy_action.simulator import run_candidate_simulations #가능한 후보를 시나리오별로 돌리면 결과는 어떤지?
 
 
+# 4. 블록 2 — 선택 후보 설명용 컬럼 정의
 # “최종 선택안이 왜 그렇게 분류됐는지, MOQ/lot/창고/운전자금/도착시점 기준으로 어떤 상태였는지를 보여주는 설명용 체크리스트”
 SELECTED_GATE_COLS = [
     "decision_id",
@@ -37,6 +39,7 @@ SELECTED_GATE_COLS = [
     "projected_max_end_inv_ton_base",
     "projected_total_shortage_ton_base",
 ]
+# 5. 블록 3 — 필요한 큰 후보 설명용 컬럼 정의
 #동시에 “정말 필요한 양 후보(shortage_anchored)”가 왜 못 갔는지?
 SHORTAGE_ANCHORED_GATE_COLS = [
     "decision_id",
@@ -92,7 +95,7 @@ def _attach_gate_context(best_candidate_df: pd.DataFrame, gated_candidate_df: pd
     return out
 
 
-
+# 5. 블록 3 — 필요한 큰 후보 설명용 컬럼 정의
 def run_full_decision_pipeline(decision_master_df: pd.DataFrame, cfg: PipelineConfig) -> Dict[str, pd.DataFrame]:
     baseline_flow_df = build_baseline_flow_df(decision_master_df, cfg) #“지금 안 샀다고 보면 앞으로 월별로 어떻게 흘러가나?”
     candidate_df = generate_candidate_df(decision_master_df, cfg) #2단계: candidate 생성
