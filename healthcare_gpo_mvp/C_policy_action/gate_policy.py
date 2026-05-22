@@ -5,6 +5,7 @@ from healthcare_gpo_mvp import config
 
 def apply_gates(candidate_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd.DataFrame:
     context_columns = [
+        "decision_month",
         "item_id",
         "data_quality_score",
         "substitute_available",
@@ -12,7 +13,9 @@ def apply_gates(candidate_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd.DataF
         "supplier_count",
         "supplier_otif",
     ]
-    gated_df = candidate_df.merge(signal_df[context_columns], on="item_id", how="left")
+    gated_df = candidate_df.merge(
+        signal_df[context_columns], on=["decision_month", "item_id"], how="left"
+    )
     gate_results = gated_df.apply(_gate_row, axis=1, result_type="expand")
     gated_df["gate_status"] = gate_results["gate_status"]
     gated_df["gate_reason"] = gate_results["gate_reason"]
@@ -57,4 +60,3 @@ def _gate_row(row: pd.Series) -> dict:
         "gate_status": "pass",
         "gate_reason": "Candidate action passed operating gate checks.",
     }
-

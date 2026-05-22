@@ -6,8 +6,13 @@ This document describes an MVP scenario that reinterprets the Model2 procurement
 
 ## 2. Input Data
 
+The current MVP uses a single-month snapshot structure. The row unit is `decision_month + item_id`.
+
+Features such as `annual_spend`, `supplier_otif`, and `emergency_purchase_ratio` can be interpreted as summarized historical operating features, but this MVP itself is not a time-series forecasting model. If real monthly procurement data becomes available later, `decision_month` can be expanded into multiple months and converted into an item-month dataset.
+
 | Column | Meaning |
 |---|---|
+| decision_month | Decision snapshot month |
 | item_id | Item ID |
 | item_name | Item name |
 | category | Procurement category |
@@ -120,4 +125,3 @@ This is synthetic demo data, not real healthcare purchasing data. The MVP is rul
 ## 11. Future Extension
 
 Future versions could connect governed real data, BI dashboards, ML-based forecasting, RPA report automation, pharmaceutical categories, API categories, and supply disruption records.
-

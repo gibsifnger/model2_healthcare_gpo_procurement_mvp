@@ -17,8 +17,10 @@ def simulate_actions(gated_candidate_df: pd.DataFrame, signal_df: pd.DataFrame) 
     missing_context = [
         column for column in context_columns if column not in gated_candidate_df.columns
     ]
-    context = signal_df[["item_id", *missing_context]]
-    simulation_df = gated_candidate_df.merge(context, on="item_id", how="left")
+    context = signal_df[["decision_month", "item_id", *missing_context]]
+    simulation_df = gated_candidate_df.merge(
+        context, on=["decision_month", "item_id"], how="left"
+    )
     scores = simulation_df.apply(_score_row, axis=1, result_type="expand")
     for column in scores.columns:
         simulation_df[column] = scores[column]

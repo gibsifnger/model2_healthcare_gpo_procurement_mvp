@@ -5,6 +5,7 @@ def build_candidates(signal_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, row in signal_df.iterrows():
         item = {
+            "decision_month": row["decision_month"],
             "item_id": row["item_id"],
             "item_name": row["item_name"],
             "category": row["category"],
@@ -25,7 +26,11 @@ def build_candidates(signal_df: pd.DataFrame) -> pd.DataFrame:
                 rows.append(_candidate(item, "maintain_contract", "Core price, delivery, and inventory indicators are stable."))
             else:
                 rows.append(_candidate(item, "monitor_risk", "No major action trigger, but KPI monitoring is needed."))
-        if not any(candidate["item_id"] == row["item_id"] for candidate in rows):
+        if not any(
+            candidate["decision_month"] == row["decision_month"]
+            and candidate["item_id"] == row["item_id"]
+            for candidate in rows
+        ):
             rows.append(_candidate(item, "monitor_risk", "No dominant action trigger was detected."))
 
     return pd.DataFrame(rows)
@@ -46,4 +51,3 @@ def _is_stable_contract(row: pd.Series) -> bool:
         and row["inventory_risk_level"] == "low"
         and row["exception_purchase_risk"] == "low"
     )
-

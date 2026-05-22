@@ -21,10 +21,10 @@ def select_final_actions(simulation_df: pd.DataFrame) -> pd.DataFrame:
     selectable["action_rank"] = selectable["candidate_action"].map(ACTION_PRIORITY)
     selected = (
         selectable.sort_values(
-            ["item_id", "priority_score", "action_rank"],
-            ascending=[True, False, True],
+            ["decision_month", "item_id", "priority_score", "action_rank"],
+            ascending=[True, True, False, True],
         )
-        .groupby("item_id", as_index=False)
+        .groupby(["decision_month", "item_id"], as_index=False)
         .head(1)
         .copy()
     )
@@ -32,6 +32,7 @@ def select_final_actions(simulation_df: pd.DataFrame) -> pd.DataFrame:
     selected["selection_reason"] = selected.apply(_selection_reason, axis=1)
     return selected[
         [
+            "decision_month",
             "item_id",
             "item_name",
             "category",
@@ -47,4 +48,3 @@ def _selection_reason(row: pd.Series) -> str:
         f"Selected by priority score {row['priority_score']:.3f} "
         f"with gate status '{row['gate_status']}'."
     )
-

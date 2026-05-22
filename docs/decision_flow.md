@@ -2,6 +2,8 @@
 
 Input → State generation → Signal interpretation → Candidate action generation → Gate check → Scenario simulation → Final action recommendation
 
+Input row: `decision_month + item_id`
+
 | Step | Input | Output | File |
 |---|---|---|---|
 | Input | Synthetic demo item data | Raw purchasing category table | data/healthcare_gpo_mvp_demo.csv |
@@ -12,4 +14,3 @@ Input → State generation → Signal interpretation → Candidate action genera
 | Scenario simulation | Gated candidates | Expected effect scores | outputs/simulation_result_df.csv |
 | Final action recommendation | Scenario scores | Selected action per item | outputs/final_decision_df.csv |
 | Portfolio output | Final action table | Human-readable recommendations | outputs/healthcare_gpo_mvp_recommendations.csv |
-

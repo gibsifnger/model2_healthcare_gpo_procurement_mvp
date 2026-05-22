@@ -1,4 +1,5 @@
 REQUIRED_COLUMNS = [
+    "decision_month",
     "item_id",
     "item_name",
     "category",
@@ -16,6 +17,7 @@ REQUIRED_COLUMNS = [
 ]
 
 FINAL_OUTPUT_COLUMNS = [
+    "decision_month",
     "item_id",
     "item_name",
     "category",
@@ -35,4 +37,3 @@ CANDIDATE_ACTIONS = [
     "dual_source",
     "review_substitute",
 ]
-

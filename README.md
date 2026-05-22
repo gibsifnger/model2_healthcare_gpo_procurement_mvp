@@ -24,6 +24,11 @@ Input data
 → Simulation  
 → Final recommendation
 
+Row unit:
+`decision_month + item_id = one procurement strategy decision row`
+
+This MVP uses single-month item-level snapshot data for `2026-05`, not multi-month time-series data. If `decision_month` is later expanded across multiple months, the same structure can become an item-month procurement strategy decision history or time-series analysis dataset.
+
 ## 4. Repository Structure
 
 ```text
@@ -56,6 +61,7 @@ model2_healthcare_gpo_procurement_mvp/
 
 | Column | Meaning |
 |---|---|
+| decision_month | Decision snapshot month |
 | item_id | Item ID |
 | item_name | Item name |
 | category | Procurement category: MRO, 진료재료, 장비소모품, 검사재료 |
@@ -125,4 +131,3 @@ This MVP demonstrates how procurement strategy planning can be structured into c
 - Connect to a BI dashboard.
 - Connect to RPA or report automation.
 - Extend toward ML-based price, demand, and risk forecasting.
-

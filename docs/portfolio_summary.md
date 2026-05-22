@@ -8,6 +8,8 @@ Healthcare GPO Procurement Strategy MVP
 
 기존 Model2의 구매 의사결정 구조를 의료 GPO 구매전략기획 상황에 맞게 경량 재구성했다.
 
+This MVP uses a single-month item-level snapshot dataset. The row unit is decision_month + item_id, which can later be extended into an item-month time-series structure when real historical procurement data becomes available.
+
 ## What It Shows
 
 - 카테고리별 구매 데이터 분석
@@ -28,4 +30,3 @@ Healthcare GPO Procurement Strategy MVP
 | AI 기반 구매 리포트 | rule-based signal과 recommendation output 구성 | 향후 자동 리포트와 분석 보조 기능으로 확장 가능 |
 | 공급망 리스크 관리 | supplier_count, supplier_otif, lead_time, inventory risk 기반 신호 생성 | 공급사 집중과 납기 리스크를 조기 식별 |
 | 스마트 소싱 전략 | dual_source, review_substitute, standardize_item 후보 생성 | 품목별 소싱 전략 후보를 일관된 기준으로 제안 |
-

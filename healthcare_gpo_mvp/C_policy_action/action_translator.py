@@ -18,6 +18,7 @@ ACTION_REASONS = {
 def translate_actions(selection_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd.DataFrame:
     context = signal_df[
         [
+            "decision_month",
             "item_id",
             "price_pressure_score",
             "supplier_concentration_risk",
@@ -27,11 +28,13 @@ def translate_actions(selection_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd
             "data_readiness",
         ]
     ]
-    final_df = selection_df.merge(context, on="item_id", how="left")
+    final_df = selection_df.merge(
+        context, on=["decision_month", "item_id"], how="left"
+    )
     final_df["risk_summary"] = final_df.apply(_risk_summary, axis=1)
     final_df["decision_reason"] = final_df["recommended_action"].map(ACTION_REASONS)
     return final_df[FINAL_OUTPUT_COLUMNS].sort_values(
-        ["priority_score", "item_id"], ascending=[False, True]
+        ["priority_score", "decision_month", "item_id"], ascending=[False, True, True]
     )
 
 
@@ -50,4 +53,3 @@ def _risk_summary(row: pd.Series) -> str:
     if row["inventory_risk_level"] == "high":
         risks.append("재고부족 위험 높음")
     return ", ".join(risks) if risks else "주요 위험 낮음"
-
