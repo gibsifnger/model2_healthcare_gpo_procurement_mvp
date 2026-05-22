@@ -1,170 +1,133 @@
-# Model2 Procurement Decision Pipeline
+# Healthcare GPO Procurement Strategy MVP
 
-구매/SCM 의사결정을 위한 end-to-end 파이프라인입니다. 단순 가격 예측 모델이 아니라, 외생 데이터로 현재 구매 상태를 만들고, 위험과 기회를 해석한 뒤, 회사 운영 기준에 맞는 정책 후보를 비교해 최종 액션을 추천하는 구조입니다.
+This project is a lightweight MVP that adapts the Model2 procurement decision architecture to a healthcare GPO procurement strategy scenario. It does not implement a full healthcare procurement system and does not use real hospital data.
 
-## What This Project Shows
+이 프로젝트는 기존 Model2의 구매 의사결정 구조를 헬스케어 GPO 구매전략기획 상황에 맞게 경량 재구성한 synthetic demo data 기반 MVP입니다. 실제 의료 구매 시스템이나 실제 병원 데이터를 구현한 것이 아닙니다.
 
-이 프로젝트는 구매 담당자가 반복적으로 마주치는 질문을 데이터 파이프라인으로 구조화합니다.
+## 1. Project Overview
 
-- 지금 구매 장면은 어떤 상태인가?
-- 위험 또는 기회로 판단하는 근거는 무엇인가?
-- 실행 가능한 구매 정책 후보는 무엇인가?
-- 회사의 MOQ, 창고, 운전자본, 입고 시점 기준을 통과하는가?
-- 여러 시나리오에서 어떤 후보가 가장 견고한가?
-- 최종적으로 구매, 관망, 추가 확인 중 무엇을 선택해야 하는가?
+This MVP reuses the core decision architecture of the original Model2 project and rebuilds it for a healthcare GPO procurement strategy planning scenario. The focus is not algorithmic performance. The focus is turning category-level purchasing data into interpretable states, risk signals, candidate actions, gate checks, scenario scores, and final recommendations.
 
-## Decision Architecture
+## 2. Why This Project
 
-### A. State Layer
+Procurement strategy planning is not only about unit price. It also requires category analysis, supplier structure, contract terms, delivery reliability, standardization potential, exception purchasing, inventory risk, and KPI monitoring.
 
-현재 구매 장면과 운영 상태를 생성합니다.
+This MVP shows how procurement data can be translated into executable action options such as rebid, annual contract review, standard item conversion, dual sourcing, substitute review, or monitoring.
 
-- 외생 데이터 입력
-- 월별 기준 상태 생성
-- baseline no-buy 흐름 계산
-- shortage helper 및 재고 흐름 구성
+## 3. Decision Architecture
 
-### B. Interpret Layer
+Input data  
+→ A_state  
+→ B_interpret  
+→ C_policy_action  
+→ Gate  
+→ Simulation  
+→ Final recommendation
 
-상태를 판단 가능한 신호로 해석합니다.
+Row unit:
+`decision_month + item_id = one procurement strategy decision row`
 
-- 모델 feature 생성
-- Target A / Target B scoring
-- 필요 구매 신호 해석
-- 위험/기회 판단 근거 구성
+This MVP uses single-month item-level snapshot data for `2026-05`, not multi-month time-series data. If `decision_month` is later expanded across multiple months, the same structure can become an item-month procurement strategy decision history or time-series analysis dataset.
 
-### C. Policy Action Layer
-
-회사 기준으로 실행 가능한 액션을 선택합니다.
-
-- 후보 정책 생성
-- 운영 gate 판단
-- 시나리오 시뮬레이션
-- 후보 비교와 최종 액션 추천
-
-## Pipeline Flow
+## 4. Repository Structure
 
 ```text
-External inputs
-  -> State generation
-  -> Judgment interpretation
-  -> Candidate policy generation
-  -> Operating gate check
-  -> Scenario simulation
-  -> Robust candidate selection
-  -> Final action recommendation
-```
-
-## Repository Structure
-
-```text
-.
+model2_healthcare_gpo_procurement_mvp/
 ├─ README.md
 ├─ requirements.txt
 ├─ .gitignore
-├─ run_all_in_one_hgb_pipeline.py
-├─ build_external_inputs.py
+├─ run_healthcare_gpo_mvp.py
 ├─ data/
-│  ├─ actual_external_inputs_monthly_2023_01_to_2026_08_working.csv
-│  └─ actual_external_inputs_monthly_2023_01_to_2026_08_notes.txt
-├─ docs/
-│  ├─ model2_column_map_and_candidate_patch.md
-│  ├─ model2_dataflow_dictionary.xlsx
-│  ├─ refactor_notes.md
-│  ├─ migration_delete_checklist.md
-│  ├─ rearrange.md
-│  └─ start.md
+│  └─ healthcare_gpo_mvp_demo.csv
 ├─ outputs/
 │  └─ .gitkeep
-├─ artifacts/
-│  └─ .gitkeep
-└─ model2_pipeline/
+├─ examples/
+│  └─ healthcare_gpo_mvp_recommendations_sample.csv
+├─ docs/
+│  ├─ healthcare_gpo_mvp.md
+│  ├─ decision_flow.md
+│  └─ portfolio_summary.md
+└─ healthcare_gpo_mvp/
+   ├─ __init__.py
+   ├─ config.py
+   ├─ schema.py
+   ├─ pipeline.py
    ├─ A_state/
    ├─ B_interpret/
-   ├─ C_policy_action/
-   ├─ config.py
-   └─ pipeline.py
+   └─ C_policy_action/
 ```
 
-## Main Scripts
+## 5. Input Features
 
-### `run_all_in_one_hgb_pipeline.py`
+| Column | Meaning |
+|---|---|
+| decision_month | Decision snapshot month |
+| item_id | Item ID |
+| item_name | Item name |
+| category | Procurement category: MRO, 진료재료, 장비소모품, 검사재료 |
+| annual_spend | Annual purchasing spend |
+| contract_price | Current contract unit price |
+| market_price_index | Market price pressure index |
+| supplier_count | Number of available suppliers |
+| supplier_otif | On-time and in-full delivery rate |
+| lead_time_days | Average lead time |
+| emergency_purchase_ratio | Exception or emergency purchase ratio |
+| standardization_score | Standardization opportunity score |
+| substitute_available | Whether a substitute item exists, 0 or 1 |
+| data_quality_score | Data reliability score |
+| inventory_risk_score | Shortage or backorder risk score |
 
-전체 의사결정 파이프라인을 실행하는 메인 스크립트입니다.
+## 6. Candidate Actions
 
-지원 모드:
+| Action | Meaning |
+|---|---|
+| data_cleanup_first | Clean item, supplier, and price data before strategy action |
+| maintain_contract | Maintain the current contract |
+| monitor_risk | Continue KPI monitoring |
+| rebid | Review pricing or run a rebid |
+| annual_contract | Review annual unit-price contract |
+| standardize_item | Convert to standard item where appropriate |
+| dual_source | Review supplier diversification |
+| review_substitute | Review substitute item option |
 
-- `--external-mode demo`
-- `--external-mode csv`
-- `--external-mode build`
-
-주요 옵션:
-
-- `--decision-month`
-- `--demo-months`
-- `--external-csv-path`
-- `--save-outputs`
-- `--save-artifacts`
-- `--use-saved-artifacts`
-- `--prediction-combine-mode`
-
-### `build_external_inputs.py`
-
-구매 판단에 필요한 월별 외생 입력 데이터를 구성하는 스크립트입니다.
-
-주요 입력 축:
-
-- 원재료 가격
-- 환율
-- 운임 지수
-
-## Quick Start
-
-### 1. Install Dependencies
+## 7. Quick Start
 
 ```bash
 pip install -r requirements.txt
+python run_healthcare_gpo_mvp.py
 ```
 
-### 2. Run Demo Mode
+## 8. Key Outputs
 
-처음 실행할 때는 저장된 모델 artifact가 없을 수 있으므로 `--fresh-fit`을 사용합니다. Demo mode의 현재 예시 데이터는 `2022-04-01`까지의 decision month를 포함합니다.
+The pipeline writes intermediate and final CSV files to `outputs/`.
 
-```bash
-python run_all_in_one_hgb_pipeline.py --external-mode demo --demo-months 44 --decision-month 2022-04-01 --save-outputs --fresh-fit
-```
+| File | Description |
+|---|---|
+| outputs/state_df.csv | A_state result with procurement strategy states |
+| outputs/signal_df.csv | B_interpret result with risk and opportunity signals |
+| outputs/candidate_df.csv | Candidate action list in long format |
+| outputs/gated_candidate_df.csv | Candidate actions after gate checks |
+| outputs/simulation_result_df.csv | Action-level KPI score comparison |
+| outputs/final_decision_df.csv | Selected action per item |
+| outputs/healthcare_gpo_mvp_recommendations.csv | Final recommendation file |
+| examples/healthcare_gpo_mvp_recommendations_sample.csv | Portfolio sample output |
 
-### 3. Run CSV Mode
+## 9. Portfolio Statement
 
-```bash
-python run_all_in_one_hgb_pipeline.py --external-mode csv --external-csv-path data/actual_external_inputs_monthly_2023_01_to_2026_08_working.csv --decision-month 2026-04-01 --save-outputs --fresh-fit
-```
+This MVP demonstrates how procurement strategy planning can be structured into category-level data, risk signals, candidate actions, operating gates, KPI comparison, and final recommendations.
 
-저장된 모델 artifact를 재사용하려면 `--model-a-path`와 `--model-b-path`를 함께 지정합니다.
+## 10. Limitations
 
-## Key Outputs
+- This is not a real healthcare procurement system.
+- This does not use real hospital data.
+- This is not a pharmaceutical or API category specialist model.
+- This is a rule-based MVP and is not intended to validate ML performance.
 
-`--save-outputs` 옵션을 사용하면 `outputs/`에 주요 DataFrame이 CSV로 저장됩니다.
+## 11. Future Extension
 
-- `meta_df`
-- `exogenous_df`
-- `historical_master_df`
-- `scored_latest_df`
-- `baseline_flow_df`
-- `candidate_df`
-- `gated_candidate_df`
-- `simulation_result_df`
-- `scenario_summary_df`
-- `robust_summary_df`
-- `best_candidate_df`
-- `final_decision_df`
-
-## Portfolio Perspective
-
-이 프로젝트는 구매/SCM 업무를 다음 세 가지 관점으로 분리해 보여줍니다.
-
-- 상태 생성: 외생 변수와 운영 데이터를 구매 판단 가능한 상태로 변환
-- 판단 해석: 예측 결과와 rule signal을 결합해 위험/기회 근거 구성
-- 정책 행동: 실행 가능한 후보만 gate로 걸러내고 시나리오 기반으로 최종 액션 선택
-
-따라서 결과물은 "예측값" 하나가 아니라, 구매 의사결정에 필요한 상태, 근거, 후보, 제약, 시뮬레이션, 추천 액션을 함께 제공합니다.
+- Connect with real hospital purchasing data after governance review.
+- Extend to pharmaceutical and API categories.
+- Add supply disruption and shortage event data.
+- Connect to a BI dashboard.
+- Connect to RPA or report automation.
+- Extend toward ML-based price, demand, and risk forecasting.
