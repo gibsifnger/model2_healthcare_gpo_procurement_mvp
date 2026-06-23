@@ -1,8 +1,18 @@
+"""
+[FILE PURPOSE]
+- 최종 선택된 action을 현업 담당자가 이해할 수 있는 추천 사유 및 리스크 요약으로 변환하는 단계이다.
+- 모델의 결정 로그를 사람이 해석 가능한 설명으로 바꿔 포트폴리오 의사결정에 활용하도록 한다.
+
+[BUSINESS UNIT]
+- 기본 판단 단위: 구매전략 판단월(decision_month) × 품목(item_id)
+"""
+
 import pandas as pd
 
 from healthcare_gpo_mvp.schema import FINAL_OUTPUT_COLUMNS
 
 
+# 추천 사유 맵: 각 action이 왜 추천되었는지를 설명하는 현업용 문구
 ACTION_REASONS = {
     "data_cleanup_first": "데이터 품질 점수가 낮아 계약/소싱 판단보다 품목·공급사·단가 데이터 정비가 우선입니다.",
     "dual_source": "공급사 의존도가 높고 납기 안정성이 낮아 공급사 이원화 검토가 필요합니다.",
@@ -16,6 +26,7 @@ ACTION_REASONS = {
 
 
 def translate_actions(selection_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd.DataFrame:
+    # 필요한 컨텍스트(신호)를 결합해 리스크 요약과 추천 사유를 생성
     context = signal_df[
         [
             "decision_month",
@@ -39,6 +50,7 @@ def translate_actions(selection_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd
 
 
 def _risk_summary(row: pd.Series) -> str:
+    # 리스크 요약은 표준화된 키워드로 재무/공급/운영 리스크를 압축해 제공
     risks = []
     if row["data_readiness"] == "fail":
         risks.append("데이터 정비 필요")
